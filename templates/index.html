@@ -1,0 +1,1510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>HP WeatherWatch — Himachal Pradesh</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-deep:    #080d1a;
+      --bg-panel:   #0e1628;
+      --bg-card:    #121e35;
+      --border:     #1e2e4a;
+      --cyan:       #38d9f5;
+      --cyan-dim:   rgba(56,217,245,0.12);
+      --amber:      #f5a623;
+      --red-risk:   #ff4d4d;
+      --green-safe: #22d3a5;
+      --text-main:  #e8f0fe;
+      --text-muted: #6b82a8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg-deep);
+      color: var(--text-main);
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+    }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: var(--bg-deep); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    #sidebar {
+      width: 72px;
+      background: var(--bg-panel);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 0;
+      gap: 8px;
+      flex-shrink: 0;
+      transition: width 0.3s ease;
+      overflow: hidden;
+      z-index: 50;
+    }
+    #sidebar.expanded { width: 220px; align-items: flex-start; padding: 24px 0; }
+    .sidebar-logo {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 15px;
+      color: var(--cyan);
+      letter-spacing: 1px;
+      padding: 0 20px 16px;
+      border-bottom: 1px solid var(--border);
+      width: 100%;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    .sidebar-logo .logo-short { display: inline; }
+    .sidebar-logo .logo-full  { display: none; }
+    #sidebar.expanded .logo-short { display: none; }
+    #sidebar.expanded .logo-full  { display: inline; }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      padding: 12px 20px;
+      cursor: pointer;
+      border-radius: 0;
+      transition: background 0.2s, color 0.2s;
+      color: var(--text-muted);
+      position: relative;
+      white-space: nowrap;
+    }
+    .nav-item:hover { background: var(--cyan-dim); color: var(--text-main); }
+    .nav-item.active { color: var(--cyan); background: var(--cyan-dim); }
+    .nav-item.active::before {
+      content: '';
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 3px;
+      background: var(--cyan);
+      border-radius: 0 3px 3px 0;
+    }
+    .nav-label { font-size: 13px; font-weight: 500; display: none; }
+    #sidebar.expanded .nav-label { display: inline; }
+    .nav-icon { font-size: 18px; flex-shrink: 0; }
+
+    #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+    #topbar {
+      height: 60px;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      gap: 16px;
+      flex-shrink: 0;
+    }
+    #topbar button#toggleSidebar {
+      background: none; border: none;
+      color: var(--text-muted); font-size: 20px;
+      cursor: pointer; padding: 4px;
+    }
+    .search-bar {
+      flex: 1; max-width: 320px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      display: flex; align-items: center;
+      padding: 0 12px; gap: 8px;
+    }
+    .search-bar input {
+      background: none; border: none; outline: none;
+      color: var(--text-main); font-size: 13px;
+      font-family: 'DM Sans', sans-serif;
+      width: 100%; padding: 8px 0;
+    }
+    .search-bar input::placeholder { color: var(--text-muted); }
+    .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 16px; }
+    .topbar-badge {
+      font-size: 11px; background: var(--amber); color: #000;
+      font-weight: 700; padding: 2px 8px; border-radius: 20px;
+      font-family: 'Syne', sans-serif;
+    }
+    .time-chip { font-size: 12px; color: var(--text-muted); font-family: 'Syne', sans-serif; }
+
+    #content {
+      flex: 1; overflow-y: auto; padding: 24px;
+      display: flex; flex-direction: column; gap: 24px;
+    }
+
+    .page { display: none; }
+    .page.active { display: contents; }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px; padding: 20px;
+    }
+    .card-title {
+      font-family: 'Syne', sans-serif; font-size: 13px;
+      font-weight: 700; letter-spacing: 1px;
+      text-transform: uppercase; color: var(--text-muted);
+      margin-bottom: 16px;
+    }
+
+    .hero-card {
+      background: linear-gradient(135deg, #0a1f3d 0%, #0d2b4e 60%, #0e3560 100%);
+      border: 1px solid var(--border); border-radius: 16px;
+      padding: 28px; position: relative; overflow: hidden;
+    }
+    .hero-card::before {
+      content: ''; position: absolute;
+      top: -60px; right: -60px; width: 200px; height: 200px;
+      background: radial-gradient(circle, rgba(56,217,245,0.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .hero-card .mountain-silhouette {
+      position: absolute; bottom: 0; right: 0;
+      width: 260px; height: 120px; opacity: 0.06;
+    }
+
+    .city-pills { display: flex; gap: 8px; flex-wrap: wrap; }
+    .city-pill {
+      padding: 6px 16px; border-radius: 20px;
+      font-size: 12px; font-weight: 500;
+      border: 1px solid var(--border); cursor: pointer;
+      background: var(--bg-card); color: var(--text-muted);
+      transition: all 0.2s;
+    }
+    .city-pill:hover { border-color: var(--cyan); color: var(--cyan); }
+    .city-pill.active {
+      background: var(--cyan); color: var(--bg-deep);
+      border-color: var(--cyan); font-weight: 700;
+    }
+
+    .highlight-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .highlight-tile {
+      background: var(--bg-panel); border: 1px solid var(--border);
+      border-radius: 12px; padding: 16px; text-align: center;
+    }
+    .highlight-tile .label { font-size: 11px; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .highlight-tile .value { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 700; }
+
+    .risk-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 12px; border-radius: 20px;
+      font-size: 12px; font-weight: 700; font-family: 'Syne', sans-serif;
+    }
+    .badge-low    { background: rgba(34,211,165,0.15); color: #22d3a5; border: 1px solid rgba(34,211,165,0.3); }
+    .badge-medium { background: rgba(245,166,35,0.15);  color: #f5a623;  border: 1px solid rgba(245,166,35,0.3); }
+    .badge-high   { background: rgba(255,77,77,0.15);   color: #ff4d4d;  border: 1px solid rgba(255,77,77,0.3); }
+
+    .predict-btn {
+      background: var(--cyan); color: var(--bg-deep);
+      border: none; border-radius: 10px; padding: 12px 28px;
+      font-family: 'Syne', sans-serif; font-weight: 700;
+      font-size: 13px; cursor: pointer; letter-spacing: 0.5px;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+    .predict-btn:hover { opacity: 0.85; transform: translateY(-1px); }
+    .predict-btn:active { transform: translateY(0); }
+    .predict-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    input[type=range] {
+      width: 100%; height: 4px;
+      background: var(--border); border-radius: 4px; outline: none;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px; height: 16px;
+      background: var(--cyan); border-radius: 50%;
+      cursor: pointer; box-shadow: 0 0 8px rgba(56,217,245,0.5);
+    }
+
+    .chart-wrap { position: relative; height: 280px; }
+
+    .city-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .city-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 14px; padding: 18px;
+      transition: border-color 0.2s, transform 0.2s; cursor: pointer;
+    }
+    .city-card:hover { border-color: rgba(56,217,245,0.4); transform: translateY(-2px); }
+    .city-card .city-name { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+    .city-card .city-temp { font-family: 'Syne', sans-serif; font-size: 32px; font-weight: 800; color: var(--cyan); }
+    .city-card .city-meta { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+    .city-card .city-icon { font-size: 28px; }
+
+    .alert-banner {
+      background: rgba(255,77,77,0.1); border: 1px solid rgba(255,77,77,0.3);
+      border-radius: 10px; padding: 12px 16px;
+      display: flex; align-items: center; gap: 12px; font-size: 13px;
+    }
+    .alert-banner .alert-icon { font-size: 20px; }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .fade-up   { animation: fadeUp 0.4s ease forwards; }
+    .fade-up-2 { animation: fadeUp 0.4s 0.1s ease both; }
+    .fade-up-3 { animation: fadeUp 0.4s 0.2s ease both; }
+    .fade-up-4 { animation: fadeUp 0.4s 0.3s ease both; }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.7); }
+    }
+    .live-dot {
+      width: 8px; height: 8px; background: var(--green-safe);
+      border-radius: 50%; animation: pulse-dot 2s infinite; display: inline-block;
+    }
+
+    .section-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+    @media (max-width: 900px) {
+      .highlight-grid { grid-template-columns: repeat(2, 1fr); }
+      .city-grid      { grid-template-columns: repeat(2, 1fr); }
+      .section-row    { grid-template-columns: 1fr; }
+    }
+
+    /* ══════════ HIGHWAYS PAGE STYLES (NEW) ══════════ */
+    #page-highways {
+      display: none;
+      height: calc(100vh - 60px);
+      overflow: hidden;
+    }
+    #page-highways.active {
+      display: flex !important;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    /* stat bar */
+    .hw-stat-bar {
+      display: flex; gap: 12px; padding: 16px 0 12px;
+      flex-shrink: 0; flex-wrap: wrap;
+    }
+    .hw-stat-tile {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 12px 20px;
+      display: flex; align-items: center; gap: 12px; flex: 1; min-width: 120px;
+    }
+    .hw-stat-tile .st-icon { font-size: 22px; }
+    .hw-stat-tile .st-val {
+      font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800;
+    }
+    .hw-stat-tile .st-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+
+    /* 3-panel layout */
+    .hw-panels {
+      display: grid;
+      grid-template-columns: 220px 1fr 300px;
+      gap: 12px;
+      flex: 1;
+      min-height: 0;
+    }
+
+    /* left panel */
+    .hw-left {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 14px; display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+    .hw-left-header {
+      padding: 14px 16px; border-bottom: 1px solid var(--border);
+      font-family: 'Syne', sans-serif; font-size: 12px; font-weight: 700;
+      letter-spacing: 1px; text-transform: uppercase; color: var(--text-muted);
+      flex-shrink: 0;
+    }
+    .hw-district-list { overflow-y: auto; flex: 1; }
+    .hw-district-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 11px 16px; cursor: pointer;
+      border-bottom: 1px solid rgba(30,46,74,0.5);
+      transition: background 0.15s;
+      font-size: 13px;
+    }
+    .hw-district-item:hover { background: var(--cyan-dim); }
+    .hw-district-item.active { background: var(--cyan-dim); color: var(--cyan); }
+    .hw-district-item .dist-dot {
+      width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
+    }
+    .hw-district-item .dist-name { flex: 1; font-weight: 500; }
+    .hw-district-item .dist-badge {
+      font-size: 10px; font-weight: 700; font-family: 'Syne', sans-serif;
+      padding: 2px 8px; border-radius: 20px;
+    }
+
+    /* center map */
+    .hw-map-wrap {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 14px; overflow: hidden; position: relative;
+    }
+    #highwayMap { width: 100%; height: 100%; }
+
+    /* map overlay loader */
+    .hw-map-loader {
+      position: absolute; inset: 0; z-index: 999;
+      background: rgba(8,13,26,0.85);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 12px;
+    }
+    .hw-map-loader.hidden { display: none; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .hw-spinner {
+      width: 36px; height: 36px;
+      border: 3px solid var(--border);
+      border-top-color: var(--cyan);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    .hw-map-loader p {
+      font-size: 13px; color: var(--text-muted);
+      font-family: 'Syne', sans-serif;
+    }
+
+    /* refresh button on map */
+    .hw-refresh-btn {
+      position: absolute; top: 12px; right: 12px; z-index: 500;
+      background: var(--bg-panel); border: 1px solid var(--border);
+      color: var(--text-main); border-radius: 8px;
+      padding: 8px 14px; font-size: 12px; font-family: 'Syne', sans-serif;
+      font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px;
+      transition: border-color 0.2s;
+    }
+    .hw-refresh-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+
+    /* right panel */
+    .hw-right {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 14px; display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+    .hw-right-header {
+      padding: 14px 16px; border-bottom: 1px solid var(--border);
+      font-family: 'Syne', sans-serif; font-size: 12px; font-weight: 700;
+      letter-spacing: 1px; text-transform: uppercase; color: var(--text-muted);
+      flex-shrink: 0;
+    }
+    .hw-detail-body { overflow-y: auto; flex: 1; padding: 16px; }
+
+    /* highway list in right panel */
+    .hw-card {
+      background: var(--bg-panel); border: 1px solid var(--border);
+      border-radius: 10px; padding: 14px; margin-bottom: 10px;
+      cursor: pointer; transition: border-color 0.2s;
+    }
+    .hw-card:hover { border-color: rgba(56,217,245,0.3); }
+    .hw-card.selected { border-color: var(--cyan); }
+    .hw-card-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+    .hw-card-name { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 13px; }
+    .hw-card-route { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+    /* source tag */
+    .hw-source-tag {
+      font-size: 10px; padding: 3px 8px; border-radius: 20px;
+      font-family: 'Syne', sans-serif; font-weight: 700;
+      background: rgba(56,217,245,0.1); color: var(--cyan);
+      border: 1px solid rgba(56,217,245,0.2);
+    }
+    .hw-source-tag.official {
+      background: rgba(255,77,77,0.1); color: #ff4d4d;
+      border-color: rgba(255,77,77,0.2);
+    }
+    .hw-source-tag.ml {
+      background: rgba(245,166,35,0.1); color: #f5a623;
+      border-color: rgba(245,166,35,0.2);
+    }
+
+    /* warning detail box */
+    .hw-warning-box {
+      background: var(--bg-card); border-radius: 8px;
+      padding: 12px; margin-top: 10px; font-size: 12px;
+      line-height: 1.7; color: var(--text-muted);
+      border-left: 3px solid var(--border);
+    }
+    .hw-warning-box.red   { border-left-color: #ff4d4d; }
+    .hw-warning-box.amber { border-left-color: #f5a623; }
+    .hw-warning-box.green { border-left-color: #22d3a5; }
+
+    /* last updated chip */
+    .hw-updated-chip {
+      font-size: 11px; color: var(--text-muted);
+      display: flex; align-items: center; gap: 6px; margin-top: 8px;
+    }
+
+    /* legend */
+    .hw-legend {
+      display: flex; gap: 16px; align-items: center;
+      padding: 10px 16px; border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .hw-legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-muted); }
+    .hw-legend-line { width: 24px; height: 4px; border-radius: 2px; }
+
+    /* leaflet dark overrides */
+    .leaflet-container { background: #080d1a !important; }
+    .leaflet-tile { filter: brightness(0.5) saturate(0.4) hue-rotate(180deg); }
+    .leaflet-popup-content-wrapper {
+      background: var(--bg-panel) !important;
+      border: 1px solid var(--border) !important;
+      color: var(--text-main) !important;
+      border-radius: 10px !important;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5) !important;
+    }
+    .leaflet-popup-tip { background: var(--bg-panel) !important; }
+    .leaflet-popup-content { font-family: 'DM Sans', sans-serif; font-size: 13px; }
+
+    @keyframes hwFadeIn {
+      from { opacity: 0; transform: translateX(10px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+    .hw-card { animation: hwFadeIn 0.3s ease both; }
+  </style>
+</head>
+<body>
+
+<aside id="sidebar">
+  <div class="sidebar-logo">
+    <span class="logo-short">HP</span>
+    <span class="logo-full">⛰ HP WeatherWatch</span>
+  </div>
+  <nav style="width:100%; margin-top:8px; display:flex; flex-direction:column; gap:2px;">
+    <div class="nav-item active" onclick="showPage('dashboard', this)">
+      <span class="nav-icon">🏠</span><span class="nav-label">Dashboard</span>
+    </div>
+    <div class="nav-item" onclick="showPage('forecast', this)">
+      <span class="nav-icon">📅</span><span class="nav-label">Forecast</span>
+    </div>
+    <div class="nav-item" onclick="showPage('cities', this)">
+      <span class="nav-icon">📍</span><span class="nav-label">Locations</span>
+    </div>
+    <div class="nav-item" onclick="showPage('risk', this)">
+      <span class="nav-icon">⚠️</span><span class="nav-label">Risk Predictor</span>
+    </div>
+    <!-- NEW NAV ITEM -->
+    <div class="nav-item" onclick="showPage('highways', this)">
+      <span class="nav-icon">🛣️</span><span class="nav-label">Highways</span>
+    </div>
+    <div class="nav-item" onclick="showPage('analytics', this)">
+      <span class="nav-icon">📊</span><span class="nav-label">Analytics</span>
+    </div>
+  </nav>
+  <div style="margin-top:auto; width:100%; padding: 0 16px 8px;">
+    <div class="nav-item" onclick="showPage('settings', this)" style="padding:12px 4px;">
+      <span class="nav-icon">⚙️</span><span class="nav-label">Settings</span>
+    </div>
+  </div>
+</aside>
+
+<div id="main">
+  <div id="topbar">
+    <button id="toggleSidebar" onclick="toggleSidebar()">☰</button>
+    <div class="search-bar">
+      <span style="color:var(--text-muted);">🔍</span>
+      <input type="text" placeholder="Search city in Himachal Pradesh..." />
+    </div>
+    <div class="topbar-right">
+      <span class="live-dot"></span>
+      <span class="time-chip" id="liveClock">--:-- --</span>
+      <span class="topbar-badge">HP ONLY</span>
+      <span style="font-size:22px; cursor:pointer;" title="Notifications">🔔</span>
+    </div>
+  </div>
+
+  <div id="content">
+
+    <!-- ══════════ DASHBOARD ══════════ -->
+    <div class="page active" id="page-dashboard">
+      <div class="fade-up" style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+        <span style="font-size:12px; color:var(--text-muted); font-family:'Syne',sans-serif; letter-spacing:1px;">HIMACHAL PRADESH</span>
+        <div class="city-pills" id="cityPills">
+          <div class="city-pill active" onclick="selectCity('Shimla',this)">Shimla</div>
+          <div class="city-pill" onclick="selectCity('Manali',this)">Manali</div>
+          <div class="city-pill" onclick="selectCity('Dharamsala',this)">Dharamsala</div>
+          <div class="city-pill" onclick="selectCity('Kullu',this)">Kullu</div>
+          <div class="city-pill" onclick="selectCity('Solan',this)">Solan</div>
+          <div class="city-pill" onclick="selectCity('Mandi',this)">Mandi</div>
+        </div>
+      </div>
+
+      <div class="alert-banner fade-up-2" id="alertBanner" style="display:none;">
+        <span class="alert-icon">🚨</span>
+        <div>
+          <strong style="color:#ff4d4d;">Active Weather Advisory</strong>
+          <span style="color:var(--text-muted); margin-left:8px;" id="alertText">Heavy rainfall warning.</span>
+        </div>
+        <span style="margin-left:auto; cursor:pointer; color:var(--text-muted);" onclick="document.getElementById('alertBanner').style.display='none'">✕</span>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 340px; gap:16px;" class="fade-up-2">
+        <div class="hero-card">
+          <svg class="mountain-silhouette" viewBox="0 0 260 120" fill="white" xmlns="http://www.w3.org/2000/svg">
+            <polygon points="0,120 60,40 90,70 130,10 160,60 190,30 220,65 260,20 260,120"/>
+          </svg>
+          <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+            <div>
+              <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px; font-family:'Syne',sans-serif; letter-spacing:1px;">CURRENT LOCATION</div>
+              <div style="font-family:'Syne',sans-serif; font-size:22px; font-weight:800;" id="heroCity">Shimla, HP</div>
+            </div>
+            <div style="font-size:12px; color:var(--text-muted); text-align:right;" id="heroDateTime">--</div>
+          </div>
+          <div style="display:flex; align-items:flex-end; gap:20px; margin-top:24px;">
+            <div style="font-family:'Syne',sans-serif; font-size:72px; font-weight:800; line-height:1; color:var(--cyan);" id="heroTemp">14°</div>
+            <div style="padding-bottom:12px;">
+              <div style="font-size:32px;" id="heroIcon">⛅</div>
+              <div style="font-size:14px; color:var(--text-muted); margin-top:4px;" id="heroDesc">Partly Cloudy</div>
+            </div>
+          </div>
+          <div style="display:flex; gap:24px; margin-top:16px; padding-top:16px; border-top:1px solid var(--border);">
+            <div style="font-size:12px;"><span style="color:var(--text-muted);">Feels like </span><strong id="heroFeels">11°C</strong></div>
+            <div style="font-size:12px;"><span style="color:var(--text-muted);">Humidity </span><strong id="heroHumidity">78%</strong></div>
+            <div style="font-size:12px;"><span style="color:var(--text-muted);">Wind </span><strong id="heroWind">12 km/h</strong></div>
+            <div style="font-size:12px;"><span style="color:var(--text-muted);">Altitude </span><strong id="heroAlt">2206 m</strong></div>
+          </div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:14px;">
+          <div class="card" style="flex:1;">
+            <div class="card-title">Chance of Rain</div>
+            <div style="display:flex; flex-direction:column; gap:10px;" id="rainChances"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="fade-up-3">
+        <div style="font-family:'Syne',sans-serif; font-size:13px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--text-muted); margin-bottom:12px;">Today's Highlights</div>
+        <div class="highlight-grid">
+          <div class="highlight-tile"><div class="label">☔ Precipitation</div><div class="value" id="hlPrecip">--</div></div>
+          <div class="highlight-tile"><div class="label">💧 Humidity</div><div class="value" id="hlHumidity">--</div></div>
+          <div class="highlight-tile"><div class="label">💨 Wind Speed</div><div class="value" id="hlWind">--</div></div>
+          <div class="highlight-tile"><div class="label">🌅 Sunrise / Sunset</div><div class="value" style="font-size:14px;" id="hlSunrise">-- / --</div></div>
+          <div class="highlight-tile"><div class="label">🌡 Dew Point</div><div class="value" id="hlDew">--</div></div>
+          <div class="highlight-tile"><div class="label">🔭 Visibility</div><div class="value" id="hlVis">--</div></div>
+          <div class="highlight-tile"><div class="label">📊 Pressure</div><div class="value" id="hlPressure">--</div></div>
+          <div class="highlight-tile"><div class="label">☁ Cloud Cover</div><div class="value" id="hlCloud">--</div></div>
+        </div>
+      </div>
+
+      <div class="card fade-up-4">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+          <div class="card-title" style="margin-bottom:0;">Hourly Temperature</div>
+          <div style="display:flex; gap:8px;">
+            <button onclick="setChartMode('today')" id="btnToday" style="font-size:12px; padding:4px 14px; border-radius:20px; border:1px solid var(--cyan); background:var(--cyan); color:var(--bg-deep); font-family:'Syne',sans-serif; font-weight:700; cursor:pointer;">Today</button>
+            <button onclick="setChartMode('week')"  id="btnWeek"  style="font-size:12px; padding:4px 14px; border-radius:20px; border:1px solid var(--border); background:none; color:var(--text-muted); font-family:'Syne',sans-serif; cursor:pointer;">Week</button>
+          </div>
+        </div>
+        <div class="chart-wrap"><canvas id="tempChart"></canvas></div>
+      </div>
+    </div><!-- /dashboard -->
+
+
+    <!-- ══════════ FORECAST ══════════ -->
+    <div class="page" id="page-forecast">
+      <div style="font-family:'Syne',sans-serif; font-size:20px; font-weight:800; margin-bottom:20px;">7-Day Forecast — <span id="forecastCityName">Shimla</span></div>
+      <div class="city-pills" style="margin-bottom:20px;" id="forecastPills">
+        <div class="city-pill active" onclick="selectForecastCity('Shimla',this)">Shimla</div>
+        <div class="city-pill" onclick="selectForecastCity('Manali',this)">Manali</div>
+        <div class="city-pill" onclick="selectForecastCity('Dharamsala',this)">Dharamsala</div>
+        <div class="city-pill" onclick="selectForecastCity('Kullu',this)">Kullu</div>
+        <div class="city-pill" onclick="selectForecastCity('Solan',this)">Solan</div>
+        <div class="city-pill" onclick="selectForecastCity('Mandi',this)">Mandi</div>
+      </div>
+      <div id="forecastCards" style="display:flex; flex-direction:column; gap:12px;"></div>
+    </div>
+
+
+    <!-- ══════════ CITIES ══════════ -->
+    <div class="page" id="page-cities">
+      <div style="font-family:'Syne',sans-serif; font-size:20px; font-weight:800; margin-bottom:20px;">All HP Locations</div>
+      <div class="city-grid" id="cityGrid"></div>
+    </div>
+
+
+    <!-- ══════════ RISK PREDICTOR ══════════ -->
+    <div class="page" id="page-risk">
+      <div style="font-family:'Syne',sans-serif; font-size:20px; font-weight:800; margin-bottom:6px;">⚠️ Landslide Risk Predictor</div>
+      <div style="font-size:13px; color:var(--text-muted); margin-bottom:24px;">Input current environmental conditions to predict landslide probability using your ML model.</div>
+      <div class="section-row">
+        <div class="card">
+          <div class="card-title">Input Parameters</div>
+          <div style="display:flex; flex-direction:column; gap:20px;">
+            <div>
+              <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                <label style="font-size:13px;" id="rainfallLabel">🌧 Rainfall (last 24h)</label>
+                <span style="font-size:13px; color:var(--cyan); font-family:'Syne',sans-serif; font-weight:700;" id="rainfallVal">45 mm</span>
+              </div>
+              <input type="range" id="rainfall" min="0" max="200" value="0" oninput="onRainfallSliderInput()">
+            </div>
+            <div>
+              <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                <label style="font-size:13px;">💧 Soil Moisture</label>
+                <span style="font-size:13px; color:var(--cyan); font-family:'Syne',sans-serif; font-weight:700;" id="soilVal">60%</span>
+              </div>
+              <input type="range" min="0" max="100" value="60" id="soil" oninput="updateSlider('soil','soilVal','%')">
+            </div>
+            <div>
+              <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                <label style="font-size:13px;">⛰ Slope Angle</label>
+                <span style="font-size:13px; color:var(--cyan); font-family:'Syne',sans-serif; font-weight:700;" id="slopeVal">35°</span>
+              </div>
+              <input type="range" min="0" max="90" value="35" id="slope" oninput="updateSlider('slope','slopeVal','°')">
+            </div>
+            <div>
+              <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                <label style="font-size:13px;">🌡 Temperature</label>
+                <span style="font-size:13px; color:var(--cyan); font-family:'Syne',sans-serif; font-weight:700;" id="tempVal">14°C</span>
+              </div>
+              <input type="range" min="-10" max="40" value="14" id="tempRisk" oninput="updateSlider('tempRisk','tempVal','°C')">
+            </div>
+            <div>
+              <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                <label style="font-size:13px;">💨 Wind Speed</label>
+                <span style="font-size:13px; color:var(--cyan); font-family:'Syne',sans-serif; font-weight:700;" id="windVal">12 km/h</span>
+              </div>
+              <input type="range" min="0" max="120" value="12" id="windRisk" oninput="updateSlider('windRisk','windVal',' km/h')">
+            </div>
+            <div>
+              <label style="font-size:13px; display:block; margin-bottom:8px;">📍 Select District</label>
+              <select id="riskDistrict" onchange="rainfallOverridden=false; fetchLiveRainfall(this.value)" style="width:100%; background:var(--bg-panel); border:1px solid var(--border); color:var(--text-main); padding:10px 12px; border-radius:8px; font-family:'DM Sans',sans-serif; font-size:13px; outline:none;">
+                <option>Shimla</option><option>Manali (Kullu)</option><option>Dharamsala (Kangra)</option>
+                <option>Kullu</option><option>Solan</option><option>Mandi</option>
+              </select>
+            </div>
+            <button class="predict-btn" id="predictBtn" onclick="runPrediction()">🔮 Run Prediction</button>
+          </div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:14px;">
+          <div class="card">
+            <div class="card-title">Prediction Result</div>
+            <div id="riskResult">
+              <div style="text-align:center; color:var(--text-muted); font-size:13px; padding:20px 0;">
+                ← Adjust parameters and click "Run Prediction"
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">Risk Guide</div>
+            <div style="display:flex; flex-direction:column; gap:12px; font-size:13px;">
+              <div style="display:flex; align-items:center; gap:10px;">
+                <span class="risk-badge badge-low">LOW</span>
+                <span style="color:var(--text-muted);">Stable conditions. Normal monitoring.</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:10px;">
+                <span class="risk-badge badge-medium">MEDIUM</span>
+                <span style="color:var(--text-muted);">Elevated risk. Avoid vulnerable slopes.</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:10px;">
+                <span class="risk-badge badge-high">HIGH</span>
+                <span style="color:var(--text-muted);">Danger zone. Evacuate if necessary.</span>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">High-Risk Zones in HP</div>
+            <div style="display:flex; flex-direction:column; gap:8px; font-size:13px;">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span>Kinnaur District</span><span class="risk-badge badge-high">HIGH</span>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span>Kullu Valley</span><span class="risk-badge badge-medium">MEDIUM</span>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span>Chamba</span><span class="risk-badge badge-medium">MEDIUM</span>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span>Mandi</span><span class="risk-badge badge-low">LOW</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /risk -->
+
+
+    <!-- ══════════ HIGHWAYS PAGE (NEW) ══════════ -->
+    <div class="page" id="page-highways">
+
+      <!-- Stat bar -->
+      <div class="hw-stat-bar">
+        <div class="hw-stat-tile">
+          <span class="st-icon">🛣️</span>
+          <div>
+            <div class="st-val" id="hw-stat-total" style="color:var(--cyan);">--</div>
+            <div class="st-label">Total Highways</div>
+          </div>
+        </div>
+        <div class="hw-stat-tile">
+          <span class="st-icon">🟢</span>
+          <div>
+            <div class="st-val" id="hw-stat-clear" style="color:#22d3a5;">--</div>
+            <div class="st-label">Clear</div>
+          </div>
+        </div>
+        <div class="hw-stat-tile">
+          <span class="st-icon">🟡</span>
+          <div>
+            <div class="st-val" id="hw-stat-risk" style="color:#f5a623;">--</div>
+            <div class="st-label">At Risk</div>
+          </div>
+        </div>
+        <div class="hw-stat-tile">
+          <span class="st-icon">🔴</span>
+          <div>
+            <div class="st-val" id="hw-stat-blocked" style="color:#ff4d4d;">--</div>
+            <div class="st-label">Blocked / Warning</div>
+          </div>
+        </div>
+        <div class="hw-stat-tile" style="flex:2;">
+          <span class="st-icon">🕒</span>
+          <div>
+            <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Last Updated</div>
+            <div style="font-size:13px; font-weight:600; margin-top:2px;" id="hw-last-updated">Fetching data...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3-panel -->
+      <div class="hw-panels">
+
+        <!-- LEFT: District list -->
+        <div class="hw-left">
+          <div class="hw-left-header">Districts</div>
+          <div class="hw-district-list" id="hwDistrictList">
+            <!-- filled by JS -->
+          </div>
+        </div>
+
+        <!-- CENTER: Map -->
+        <div class="hw-map-wrap">
+          <div class="hw-map-loader" id="hwMapLoader">
+            <div class="hw-spinner"></div>
+            <p id="hwLoaderText">Loading highway data...</p>
+          </div>
+          <button class="hw-refresh-btn" onclick="initHighwaysPage(true)">
+            🔄 Refresh
+          </button>
+          <div id="highwayMap"></div>
+          <!-- Legend -->
+          <div class="hw-legend" style="position:absolute; bottom:0; left:0; right:0; background:rgba(8,13,26,0.85); backdrop-filter:blur(4px); z-index:400;">
+            <div class="hw-legend-item"><div class="hw-legend-line" style="background:#ff4d4d;"></div> Blocked (Official)</div>
+            <div class="hw-legend-item"><div class="hw-legend-line" style="background:#f5a623;"></div> At Risk (ML)</div>
+            <div class="hw-legend-item"><div class="hw-legend-line" style="background:#22d3a5;"></div> Clear</div>
+            <div style="margin-left:auto; font-size:11px; color:var(--text-muted);">Click any highway for details</div>
+          </div>
+        </div>
+
+        <!-- RIGHT: Detail panel -->
+        <div class="hw-right">
+          <div class="hw-right-header" id="hwRightTitle">Highway Details</div>
+          <div class="hw-detail-body" id="hwDetailBody">
+            <div style="text-align:center; color:var(--text-muted); font-size:13px; padding:40px 16px;">
+              <div style="font-size:32px; margin-bottom:12px;">🗺️</div>
+              Select a district or click a highway on the map to see details
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div><!-- /highways -->
+
+
+    <!-- ══════════ ANALYTICS ══════════ -->
+    <div class="page" id="page-analytics">
+      <div style="font-family:'Syne',sans-serif; font-size:20px; font-weight:800; margin-bottom:20px;">Analytics — Rainfall & Temperature</div>
+      <div class="section-row">
+        <div class="card">
+          <div class="card-title">Monthly Rainfall (mm)</div>
+          <div class="chart-wrap" style="height:200px;"><canvas id="rainfallChart"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Avg Temperature by City (°C)</div>
+          <div class="chart-wrap" style="height:200px;"><canvas id="cityTempChart"></canvas></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:16px;">
+        <div class="card-title">Risk Incidents — Historical (2020–2025)</div>
+        <div class="chart-wrap" style="height:180px;"><canvas id="incidentChart"></canvas></div>
+      </div>
+    </div>
+
+
+    <!-- ══════════ SETTINGS ══════════ -->
+    <div class="page" id="page-settings">
+      <div style="font-family:'Syne',sans-serif; font-size:20px; font-weight:800; margin-bottom:20px;">Settings</div>
+      <div class="card" style="max-width:480px;">
+        <div class="card-title">Preferences</div>
+        <div style="display:flex; flex-direction:column; gap:20px; font-size:13px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Temperature Unit</span>
+            <select style="background:var(--bg-panel); border:1px solid var(--border); color:var(--text-main); padding:6px 12px; border-radius:8px; font-size:13px;">
+              <option>Celsius (°C)</option><option>Fahrenheit (°F)</option>
+            </select>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Default City</span>
+            <select id="defaultCity" style="background:var(--bg-panel); border:1px solid var(--border); color:var(--text-main); padding:6px 12px; border-radius:8px; font-size:13px;">
+              <option>Shimla</option><option>Manali</option><option>Dharamsala</option><option>Kullu</option><option>Solan</option><option>Mandi</option>
+            </select>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Show Alerts</span>
+            <input type="checkbox" checked style="width:16px; height:16px; accent-color:var(--cyan);">
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Auto-refresh (5 min)</span>
+            <input type="checkbox" checked style="width:16px; height:16px; accent-color:var(--cyan);">
+          </div>
+          <div style="border-top:1px solid var(--border); padding-top:16px; color:var(--text-muted); font-size:12px;">
+            API Key (OpenWeatherMap):
+            <input type="text" placeholder="Enter your API key..." style="background:var(--bg-panel); border:1px solid var(--border); color:var(--text-muted); padding:6px 10px; border-radius:6px; font-size:12px; width:100%; margin-top:8px; outline:none; font-family:'DM Sans',sans-serif;">
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /main -->
+
+
+<script>
+'use strict';
+
+/* ─────────────────────────────────────────
+   EXISTING CODE — UNTOUCHED
+───────────────────────────────────────── */
+const API_KEY   = "5f616c179ba17d30ec2c8dd3e608e3f7";
+const FLASK_URL = "http://127.0.0.1:5000";
+
+let weatherList  = [];
+let activeCity   = 'Shimla';
+let tempChartObj = null;
+const analyticsCharts = { rainfall: null, cityTemp: null, incident: null };
+const weekForecast = {
+  days:  ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],
+  icons: ['⛅','🌧','🌦','🌤','☀','🌦','⛅'],
+  descs: ['Partly Cloudy','Rainy','Drizzle','Mostly Clear','Sunny','Drizzle','Cloudy'],
+};
+
+function updateClock() {
+  document.getElementById('liveClock').textContent =
+    new Date().toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', hour12:true });
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('expanded');
+}
+
+async function fetchWeather(city) {
+  try {
+    const res = await fetch(`https://api.openweathermap.org/data/2.5/weather?q=${city},IN&units=metric&appid=${API_KEY}`);
+    if (!res.ok) throw new Error(`OWM weather ${res.status}`);
+    const d = await res.json();
+    return { temp:d.main.temp, feels:d.main.feels_like, humidity:d.main.humidity, wind:d.wind.speed, desc:d.weather[0].description, pressure:d.main.pressure, cloud:d.clouds.all, sunrise:d.sys.sunrise, sunset:d.sys.sunset, vis:d.visibility };
+  } catch(e) {
+    console.warn('fetchWeather fallback:', e.message);
+    return { temp:20, feels:18, humidity:60, wind:5, desc:'Data unavailable', pressure:1010, cloud:50, sunrise:null, sunset:null, vis:null };
+  }
+}
+
+async function fetchForecast(city) {
+  try {
+    const res = await fetch(`https://api.openweathermap.org/data/2.5/forecast?q=${city},IN&units=metric&appid=${API_KEY}`);
+    if (!res.ok) throw new Error(`OWM forecast ${res.status}`);
+    const d = await res.json();
+    return d.list.slice(0,8).map(item => ({ time:item.dt_txt, pop:(item.pop||0)*100, temp:item.main.temp }));
+  } catch(e) {
+    console.warn('fetchForecast fallback:', e.message);
+    return Array.from({length:6},(_,i) => ({ time:new Date(Date.now()+i*3*3600*1000).toISOString(), pop:10+i*5, temp:20+i }));
+  }
+}
+
+function selectCity(city, el) {
+  activeCity = city;
+  document.querySelectorAll('#cityPills .city-pill').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  Promise.all([fetchWeather(city), fetchForecast(city)]).then(([w,f]) => {
+    weatherList = f;
+    renderDashboard(city, w);
+    renderRainGraph(f);
+    renderTempChart(f);
+  });
+}
+
+function renderDashboard(city, d) {
+  document.getElementById('heroCity').textContent     = `${city}, HP`;
+  document.getElementById('heroTemp').textContent     = `${Math.round(d.temp)}°`;
+  document.getElementById('heroDesc').textContent     = d.desc;
+  document.getElementById('heroFeels').textContent    = `${Math.round(d.feels)}°C`;
+  document.getElementById('heroHumidity').textContent = `${d.humidity}%`;
+  document.getElementById('heroWind').textContent     = `${(d.wind*3.6).toFixed(1)} km/h`;
+  document.getElementById('heroAlt').textContent      = '--';
+  document.getElementById('hlHumidity').textContent   = `${d.humidity}%`;
+  document.getElementById('hlWind').textContent       = `${(d.wind*3.6).toFixed(1)} km/h`;
+  document.getElementById('hlPressure').textContent   = `${d.pressure} hPa`;
+  document.getElementById('hlCloud').textContent      = `${d.cloud}%`;
+  document.getElementById('hlPrecip').textContent     = '--';
+  document.getElementById('hlDew').textContent        = '--';
+  document.getElementById('hlVis').textContent        = d.vis ? `${(d.vis/1000).toFixed(1)} km` : '--';
+  if (d.sunrise && d.sunset) {
+    const fmt = ts => new Date(ts*1000).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true});
+    document.getElementById('hlSunrise').textContent = `${fmt(d.sunrise)} / ${fmt(d.sunset)}`;
+  }
+  if (d.humidity > 80) {
+    document.getElementById('alertBanner').style.display = 'flex';
+    document.getElementById('alertText').textContent = `High humidity in ${city}. Possible rain conditions.`;
+  } else {
+    document.getElementById('alertBanner').style.display = 'none';
+  }
+}
+
+function renderRainGraph(data) {
+  const container = document.getElementById('rainChances');
+  if (!data || !data.length) { container.innerHTML = '<span style="color:var(--text-muted)">No data</span>'; return; }
+  const max = Math.max(...data.map(d => d.pop), 1);
+  container.innerHTML = data.map(item => {
+    const time = new Date(item.time).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+    const pct  = ((item.pop/max)*100).toFixed(0);
+    return `<div style="display:flex;align-items:center;gap:10px;font-size:12px;"><span style="color:var(--text-muted);width:50px;">${time}</span><div style="flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:var(--cyan);border-radius:3px;"></div></div><span style="color:var(--text-muted);width:30px;text-align:right;">${Math.round(item.pop)}%</span></div>`;
+  }).join('');
+}
+
+function renderTempChart(data) {
+  const canvas = document.getElementById('tempChart');
+  if (!canvas) return;
+  if (tempChartObj) { tempChartObj.destroy(); tempChartObj = null; }
+  const labels = data.map(item => new Date(item.time).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}));
+  tempChartObj = new Chart(canvas.getContext('2d'), {
+    type:'line',
+    data:{ labels, datasets:[{ data:data.map(d=>d.temp), borderColor:'#38d9f5', backgroundColor:'rgba(56,217,245,0.08)', tension:0.4, fill:true, pointBackgroundColor:'#38d9f5', pointRadius:4, borderWidth:2 }] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{grid:{color:'#1e2e4a'},ticks:{color:'#6b82a8'}}, y:{grid:{color:'#1e2e4a'},ticks:{color:'#6b82a8'}} } }
+  });
+}
+
+function setChartMode(mode) {
+  document.getElementById('btnToday').style.cssText = mode==='today' ? 'font-size:12px;padding:4px 14px;border-radius:20px;border:1px solid var(--cyan);background:var(--cyan);color:var(--bg-deep);font-family:Syne,sans-serif;font-weight:700;cursor:pointer;' : 'font-size:12px;padding:4px 14px;border-radius:20px;border:1px solid var(--border);background:none;color:var(--text-muted);font-family:Syne,sans-serif;cursor:pointer;';
+  document.getElementById('btnWeek').style.cssText  = mode==='week'  ? 'font-size:12px;padding:4px 14px;border-radius:20px;border:1px solid var(--cyan);background:var(--cyan);color:var(--bg-deep);font-family:Syne,sans-serif;font-weight:700;cursor:pointer;' : 'font-size:12px;padding:4px 14px;border-radius:20px;border:1px solid var(--border);background:none;color:var(--text-muted);font-family:Syne,sans-serif;cursor:pointer;';
+  if (weatherList.length) renderTempChart(weatherList);
+}
+
+function renderForecast(city) {
+  document.getElementById('forecastCityName').textContent = city;
+  const base = 20;
+  document.getElementById('forecastCards').innerHTML = weekForecast.days.map((day,i) => {
+    const hi = base + ((Math.random()*6-3)|0);
+    const lo = hi - (4+((Math.random()*4)|0));
+    return `<div style="display:flex;align-items:center;gap:20px;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:16px 20px;"><span style="font-family:'Syne',sans-serif;font-weight:700;width:40px;">${day}</span><span style="font-size:24px;">${weekForecast.icons[i]}</span><span style="color:var(--text-muted);font-size:13px;flex:1;">${weekForecast.descs[i]}</span><div style="display:flex;gap:12px;align-items:center;"><span style="color:var(--cyan);font-family:'Syne',sans-serif;font-weight:700;">↑ ${hi}°</span><span style="color:var(--text-muted);font-size:13px;">↓ ${lo}°</span></div><div style="width:120px;height:6px;background:var(--border);border-radius:3px;overflow:hidden;"><div style="height:100%;width:${30+i*10}%;background:linear-gradient(90deg,var(--cyan),var(--amber));border-radius:3px;"></div></div><span style="color:var(--text-muted);font-size:12px;width:40px;text-align:right;">${30+i*10}%</span></div>`;
+  }).join('');
+}
+function selectForecastCity(city, el) {
+  document.querySelectorAll('#forecastPills .city-pill').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  renderForecast(city);
+}
+
+function getIcon(condition) {
+  const map = {Clouds:'⛅',Rain:'🌧',Snow:'🌨',Clear:'☀️',Thunderstorm:'⛈',Drizzle:'🌦'};
+  return map[condition] || '🌤';
+}
+function capitalize(t) { return t.split(' ').map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' '); }
+
+async function renderCities() {
+  const grid = document.getElementById('cityGrid');
+  const cities = ['Shimla','Manali','Dharamsala','Kullu','Solan','Mandi'];
+  grid.innerHTML = `<p style="color:var(--text-muted);font-size:13px;">Loading cities…</p>`;
+  const results = await Promise.allSettled(cities.map(city =>
+    fetch(`https://api.openweathermap.org/data/2.5/weather?q=${city},IN&units=metric&appid=${API_KEY}`).then(r=>r.json()).then(d=>({city,d}))
+  ));
+  grid.innerHTML = results.map(res => {
+    if (res.status==='rejected') return '';
+    const {city,d} = res.value;
+    const temp = Math.round(d.main.temp), desc = capitalize(d.weather[0].description);
+    const humidity = d.main.humidity, wind = (d.wind.speed*3.6).toFixed(1), icon = getIcon(d.weather[0].main);
+    return `<div class="city-card" onclick="goToDashboard('${city}')"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;"><div class="city-name">${city}</div><div class="city-icon">${icon}</div></div><div class="city-temp">${temp}°C</div><div class="city-meta">${desc}</div><div style="display:flex;gap:16px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);font-size:11px;color:var(--text-muted);"><span>💧 ${humidity}%</span><span>💨 ${wind} km/h</span></div></div>`;
+  }).join('');
+}
+
+function goToDashboard(city) {
+  activeCity = city;
+  const dashNav = document.querySelector('.nav-item[onclick*="dashboard"]');
+  showPage('dashboard', dashNav);
+  Promise.all([fetchWeather(city), fetchForecast(city)]).then(([w,f]) => {
+    weatherList = f;
+    renderDashboard(city, w);
+    renderRainGraph(f);
+    renderTempChart(f);
+    document.querySelectorAll('#cityPills .city-pill').forEach(p => {
+      p.classList.toggle('active', p.textContent.trim()===city);
+    });
+  });
+}
+
+function updateSlider(inputId, valId, unit) {
+  document.getElementById(valId).textContent = document.getElementById(inputId).value + unit;
+}
+
+let rainfallOverridden = false;
+let liveRainfall_7day  = 0;
+
+async function fetchLiveRainfall(district) {
+  try {
+    const fRes = await fetch(`https://api.openweathermap.org/data/2.5/forecast?q=${district},IN&units=metric&appid=${API_KEY}`);
+    if (!fRes.ok) throw new Error('OWM forecast failed');
+    const fData = await fRes.json();
+    const total = fData.list.reduce((sum,item) => sum+(item.rain?.['3h']||0), 0);
+    liveRainfall_7day = +(total*1.4).toFixed(2);
+    if (!rainfallOverridden) {
+      const slider = document.getElementById('rainfall');
+      const clamped = Math.min(liveRainfall_7day, +slider.max);
+      slider.value = clamped;
+      document.getElementById('rainfallVal').textContent = `${clamped} mm`;
+      showLiveBadge(true);
+    }
+    return liveRainfall_7day;
+  } catch(e) {
+    console.warn('fetchLiveRainfall failed:', e.message);
+    return +document.getElementById('rainfall').value;
+  }
+}
+
+function showLiveBadge(isLive) {
+  let badge = document.getElementById('rainfallLiveBadge');
+  if (!badge) {
+    badge = document.createElement('span');
+    badge.id = 'rainfallLiveBadge';
+    badge.style.cssText = 'font-size:10px;padding:2px 8px;border-radius:20px;margin-left:8px;font-family:\'Syne\',sans-serif;font-weight:700;cursor:pointer;';
+    const label = document.querySelector('label[for="rainfall"], #rainfallLabel');
+    if (label) label.appendChild(badge);
+  }
+  if (isLive) {
+    badge.textContent = '🟢 LIVE'; badge.style.background='rgba(34,211,165,0.15)'; badge.style.color='#22d3a5'; badge.title='Showing real forecast data'; badge.onclick=null;
+  } else {
+    badge.textContent = '🔁 Reset to live'; badge.style.background='rgba(245,166,35,0.15)'; badge.style.color='#f5a623'; badge.title='Click to restore real forecast value';
+    badge.onclick = () => { rainfallOverridden=false; const slider=document.getElementById('rainfall'); const clamped=Math.min(liveRainfall_7day,+slider.max); slider.value=clamped; document.getElementById('rainfallVal').textContent=`${clamped} mm`; showLiveBadge(true); };
+  }
+}
+
+function onRainfallSliderInput() {
+  document.getElementById('rainfallVal').textContent = `${document.getElementById('rainfall').value} mm`;
+  rainfallOverridden = true;
+  showLiveBadge(false);
+}
+
+async function runPrediction() {
+  const btn=document.getElementById('predictBtn'), resultEl=document.getElementById('riskResult');
+  btn.disabled=true; btn.textContent='Predicting...';
+  const district=document.getElementById('riskDistrict').value;
+  const slope=+document.getElementById('slope').value, soil=+document.getElementById('soil').value;
+  let rainfall_7day;
+  try {
+    rainfall_7day = rainfallOverridden ? +document.getElementById('rainfall').value
+      : await Promise.race([fetchLiveRainfall(district), new Promise((_,reject)=>setTimeout(()=>reject(new Error('timeout')),5000))]);
+  } catch(e) { rainfall_7day=+document.getElementById('rainfall').value; }
+  try {
+    const controller=new AbortController(), timeout=setTimeout(()=>controller.abort(),10000);
+    const response=await fetch('http://127.0.0.1:5000/predict',{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({district,rainfall_7day,slope,soil_moisture:soil})});
+    clearTimeout(timeout);
+    if (!response.ok) throw new Error(`Server error: ${response.status}`);
+    const json=await response.json(), risk=json.risk;
+    const probability=risk.probability, score=Math.round(probability*100), risk_level=risk.risk_level, message=risk.message, prediction=risk.prediction;
+    const styleMap={LOW:{cls:'badge-low',color:'#22d3a5'},MEDIUM:{cls:'badge-medium',color:'#f5a623'},HIGH:{cls:'badge-high',color:'#ff4d4d'}};
+    const style=styleMap[risk_level]||styleMap['MEDIUM'];
+    resultEl.innerHTML=`<div style="text-align:center;padding:16px 0;"><div style="font-family:'Syne',sans-serif;font-size:40px;font-weight:800;color:${style.color};line-height:1;margin-bottom:10px;">${score}%</div><div style="margin-bottom:12px;"><span class="risk-badge ${style.cls}" style="font-size:13px;padding:6px 20px;">${risk_level} RISK</span></div><div style="font-size:13px;color:var(--text-muted);line-height:1.7;margin-bottom:16px;">${message}</div><div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin-bottom:4px;"><div style="height:100%;width:${score}%;background:${style.color};border-radius:4px;transition:width 0.8s ease;"></div></div><div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);margin-bottom:16px;"><span>0%</span><span>50%</span><span>100%</span></div><details style="text-align:left;"><summary style="font-size:11px;color:var(--text-muted);cursor:pointer;margin-bottom:6px;">Model output details</summary><div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:11px;color:var(--text-muted);line-height:1.9;">Binary prediction : <strong style="color:var(--text-main);">${prediction===1?'1 - Landslide likely':'0 - No landslide'}</strong><br>Probability : <strong style="color:var(--text-main);">${probability}</strong><br>Risk level : <strong style="color:${style.color};">${risk_level}</strong><br>District : <strong style="color:var(--text-main);">${district}</strong><br>Rainfall (7-day) : <strong style="color:var(--text-main);">${rainfall_7day} mm</strong><br>Slope : <strong style="color:var(--text-main);">${slope} deg</strong><br>Soil moisture : <strong style="color:var(--text-main);">${soil}%</strong></div></details></div>`;
+  } catch(err) {
+    resultEl.innerHTML=`<div style="text-align:center;padding:24px;"><div style="color:#ff4d4d;font-size:13px;font-weight:600;margin-bottom:8px;">${err.name==='AbortError'?'Flask took too long. Is app.py running?':err.message}</div><div style="color:var(--text-muted);font-size:12px;">Open your terminal and run: python app.py</div></div>`;
+  } finally { btn.disabled=false; btn.textContent='Run Prediction'; }
+}
+
+async function renderAnalytics() {
+  if (!weatherList || weatherList.length===0) weatherList = await fetchForecast(activeCity);
+  Object.entries(analyticsCharts).forEach(([key,instance]) => { if(instance){instance.destroy();analyticsCharts[key]=null;} });
+  await new Promise(resolve => setTimeout(resolve,0));
+  Chart.defaults.color='#6b82a8'; Chart.defaults.borderColor='#1e2e4a';
+  const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const rainfallMM=[12,18,28,45,85,180,220,190,120,55,22,10];
+  analyticsCharts.rainfall=new Chart(document.getElementById('rainfallChart').getContext('2d'),{type:'bar',data:{labels:months,datasets:[{label:'Rainfall (mm)',data:rainfallMM,backgroundColor:'rgba(56,217,245,0.35)',borderColor:'#38d9f5',borderWidth:1,borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{color:'#1e2e4a'},ticks:{color:'#6b82a8'}},y:{grid:{color:'#1e2e4a'},ticks:{color:'#6b82a8'}}}}});
+  analyticsCharts.cityTemp=new Chart(document.getElementById('cityTempChart').getContext('2d'),{type:'bar',data:{labels:weatherList.map(item=>new Date(item.time).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})),datasets:[{label:'Temp (°C)',data:weatherList.map(item=>Math.round(item.temp)),backgroundColor:'rgba(245,166,35,0.35)',borderColor:'#f5a623',borderWidth:1,borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{color:'#1e2e4a'},ticks:{color:'#6b82a8'}},y:{grid:{color:'#1e2e4a'},ticks:{color:'#6b82a8'}}}}});
+  analyticsCharts.incident=new Chart(document.getElementById('incidentChart').getContext('2d'),{type:'line',data:{labels:['2020','2021','2022','2023','2024','2025'],datasets:[{label:'Landslides',data:[24,31,18,42,38,29],borderColor:'#ff4d4d',backgroundColor:'rgba(255,77,77,0.08)',tension:0.4,fill:true,pointBackgroundColor:'#ff4d4d',pointRadius:4},{label:'Floods',data:[8,12,6,15,11,9],borderColor:'#38d9f5',backgroundColor:'rgba(56,217,245,0.08)',tension:0.4,fill:true,pointBackgroundColor:'#38d9f5',pointRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#6b82a8',boxWidth:12}}},scales:{x:{grid:{color:'#1e2e4a'},ticks:{color:'#6b82a8'}},y:{grid:{color:'#1e2e4a'},ticks:{color:'#6b82a8'}}}}});
+}
+
+
+/* ─────────────────────────────────────────
+   HIGHWAYS PAGE — NEW CODE BELOW
+───────────────────────────────────────── */
+
+// ── Static highway data: routes as lat/lng polylines ──
+const HW_DATA = {
+  "Shimla": [
+    { id:'NH5-SH',  name:'NH-5', route:'Shimla–Kalka Highway', length:'91 km',
+      coords:[[31.10,77.17],[30.83,76.95],[30.64,76.82],[30.53,76.72]] },
+    { id:'NH22-SH', name:'NH-22', route:'Shimla–Narkanda',     length:'68 km',
+      coords:[[31.10,77.17],[31.27,77.42],[31.45,77.65]] },
+  ],
+  "Manali (Kullu)": [
+    { id:'NH3-MN',  name:'NH-3',   route:'Manali–Leh Highway', length:'474 km',
+      coords:[[32.24,77.19],[32.37,77.42],[32.52,77.64],[32.74,77.82]] },
+    { id:'NH154-MN',name:'NH-154', route:'Manali–Kullu',       length:'43 km',
+      coords:[[32.24,77.19],[31.97,77.11],[31.96,77.10]] },
+  ],
+  "Dharamsala (Kangra)": [
+    { id:'NH503-DH', name:'NH-503', route:'Dharamsala–Mandi',  length:'120 km',
+      coords:[[32.22,76.32],[31.98,76.75],[31.71,76.93]] },
+    { id:'NH88-DH',  name:'NH-88',  route:'Dharamsala–Pathankot', length:'90 km',
+      coords:[[32.22,76.32],[32.27,75.99],[32.27,75.65]] },
+  ],
+  "Kullu": [
+    { id:'NH3-KU',   name:'NH-3',   route:'Kullu–Manali',      length:'43 km',
+      coords:[[31.96,77.10],[32.10,77.14],[32.24,77.19]] },
+    { id:'NH154-KU', name:'NH-154', route:'Kullu–Mandi',       length:'72 km',
+      coords:[[31.96,77.10],[31.84,77.03],[31.71,76.93]] },
+  ],
+  "Solan": [
+    { id:'NH5-SO',  name:'NH-5',  route:'Solan–Shimla',        length:'46 km',
+      coords:[[30.91,77.10],[31.00,77.13],[31.10,77.17]] },
+    { id:'NH7-SO',  name:'NH-7',  route:'Solan–Dharamsala',    length:'190 km',
+      coords:[[30.91,77.10],[31.22,76.90],[31.78,76.60],[32.22,76.32]] },
+  ],
+  "Mandi": [
+    { id:'NH154-MA', name:'NH-154', route:'Mandi–Kullu',       length:'72 km',
+      coords:[[31.71,76.93],[31.84,77.03],[31.96,77.10]] },
+    { id:'NH21-MA',  name:'NH-21',  route:'Mandi–Bilaspur',    length:'58 km',
+      coords:[[31.71,76.93],[31.55,76.80],[31.41,76.75]] },
+  ],
+};
+
+// ── District centers for map pan ──
+const DISTRICT_CENTERS = {
+  "Shimla":              [31.10, 77.17],
+  "Manali (Kullu)":      [32.24, 77.19],
+  "Dharamsala (Kangra)": [32.22, 76.32],
+  "Kullu":               [31.96, 77.10],
+  "Solan":               [30.91, 77.10],
+  "Mandi":               [31.71, 76.93],
+};
+
+// ── Highway status state ──
+let hwMap        = null;       // Leaflet map instance
+let hwPolylines  = {};         // id → Leaflet polyline
+let hwStatusData = {};         // id → { status, source, message, rainfall, probability }
+let hwInitDone   = false;
+let activeDistrict = null;
+let selectedHwId   = null;
+
+// ── Color map ──
+const STATUS_COLOR = { BLOCKED:'#ff4d4d', AT_RISK:'#f5a623', CLEAR:'#22d3a5' };
+
+// ── Fetch live rainfall for a city via OWM ──
+async function hwFetchRainfall(city) {
+  try {
+    const res = await fetch(`https://api.openweathermap.org/data/2.5/forecast?q=${city},IN&units=metric&appid=${API_KEY}`);
+    if (!res.ok) throw new Error('OWM failed');
+    const d = await res.json();
+    const total = d.list.reduce((s,item) => s+(item.rain?.['3h']||0), 0);
+    return +(total * 1.4).toFixed(2);
+  } catch(e) { return 0; }
+}
+
+// ── Call Flask /predict for a highway district ──
+async function hwCallPredict(district, rainfall) {
+  try {
+    // Use district-specific slope defaults
+    const slopeMap = { "Shimla":30, "Manali (Kullu)":42, "Dharamsala (Kangra)":28, "Kullu":38, "Solan":25, "Mandi":22 };
+    const slope = slopeMap[district] || 30;
+    const res = await fetch(`${FLASK_URL}/predict`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ district, rainfall_7day:rainfall, slope, soil_moisture:60 })
+    });
+    if (!res.ok) throw new Error('Flask error');
+    const j = await res.json();
+    return { probability: j.risk.probability, risk_level: j.risk.risk_level };
+  } catch(e) {
+    // Fallback: estimate from rainfall
+    if (rainfall > 80) return { probability:0.78, risk_level:'HIGH' };
+    if (rainfall > 40) return { probability:0.52, risk_level:'MEDIUM' };
+    return { probability:0.18, risk_level:'LOW' };
+  }
+}
+
+// ── Fetch official warnings from Flask (stub until backend ready) ──
+// Returns array of { highway_id, message, source, issued_at }
+async function hwFetchOfficialWarnings() {
+  try {
+    const res = await fetch(`${FLASK_URL}/highway-warnings`, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) throw new Error('no endpoint');
+    return await res.json();
+  } catch(e) {
+    // Backend not ready yet — return empty (ML-only mode)
+    return [];
+  }
+}
+
+// ── Determine final status for one highway ──
+function hwDetermineStatus(hwId, officialWarnings, mlResult, rainfall) {
+  // Priority 1: official warning
+  const official = officialWarnings.find(w => w.highway_id === hwId);
+  if (official) {
+    return {
+      status:  'BLOCKED',
+      source:  'official',
+      sourceLabel: official.source || 'IMD / HP Govt',
+      message: official.message,
+      issuedAt: official.issued_at || 'Recently',
+      rainfall, probability: null,
+    };
+  }
+  // Priority 2: ML prediction
+  const ml = mlResult;
+  if (ml.risk_level === 'HIGH') {
+    return {
+      status:  'AT_RISK',
+      source:  'ml',
+      sourceLabel: 'ML Prediction',
+      message: `High landslide probability (${Math.round(ml.probability*100)}%) based on current rainfall of ${rainfall} mm. Caution advised on this route.`,
+      issuedAt: 'Now (live)',
+      rainfall, probability: ml.probability,
+    };
+  }
+  if (ml.risk_level === 'MEDIUM') {
+    return {
+      status:  'AT_RISK',
+      source:  'ml',
+      sourceLabel: 'ML Prediction',
+      message: `Moderate risk detected (${Math.round(ml.probability*100)}%). Monitor weather conditions closely.`,
+      issuedAt: 'Now (live)',
+      rainfall, probability: ml.probability,
+    };
+  }
+  return {
+    status:  'CLEAR',
+    source:  'ml',
+    sourceLabel: 'ML Prediction',
+    message: `No significant risk detected. Current rainfall: ${rainfall} mm. Conditions are stable.`,
+    issuedAt: 'Now (live)',
+    rainfall, probability: ml.probability,
+  };
+}
+
+// ── Build map polylines for all districts ──
+function hwDrawAllPolylines() {
+  // Remove existing
+  Object.values(hwPolylines).forEach(p => hwMap.removeLayer(p));
+  hwPolylines = {};
+
+  Object.entries(HW_DATA).forEach(([district, highways]) => {
+    highways.forEach(hw => {
+      const statusObj = hwStatusData[hw.id];
+      const color = statusObj ? STATUS_COLOR[statusObj.status] : '#2a3f60';
+      const weight = statusObj?.status === 'BLOCKED' ? 6 : 4;
+      const poly = L.polyline(hw.coords, {
+        color, weight, opacity: 0.9,
+        dashArray: statusObj?.status === 'BLOCKED' ? null : (statusObj?.status === 'AT_RISK' ? '8,4' : null),
+      }).addTo(hwMap);
+
+      poly.bindTooltip(`<strong>${hw.name}</strong><br>${hw.route}<br><span style="color:${color};font-weight:700;">${statusObj?.status||'Loading...'}</span>`, {
+        className:'', sticky:true
+      });
+
+      poly.on('click', () => selectHighway(hw.id, district));
+      hwPolylines[hw.id] = poly;
+    });
+  });
+}
+
+// ── Update stat bar counters ──
+function hwUpdateStats() {
+  const statuses = Object.values(hwStatusData).map(s => s.status);
+  const total    = statuses.length;
+  const blocked  = statuses.filter(s => s==='BLOCKED').length;
+  const atRisk   = statuses.filter(s => s==='AT_RISK').length;
+  const clear    = statuses.filter(s => s==='CLEAR').length;
+  document.getElementById('hw-stat-total').textContent   = total   || '--';
+  document.getElementById('hw-stat-blocked').textContent = blocked || '0';
+  document.getElementById('hw-stat-risk').textContent    = atRisk  || '0';
+  document.getElementById('hw-stat-clear').textContent   = clear   || '0';
+  document.getElementById('hw-last-updated').textContent = new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true}) + ' — Live data';
+}
+
+// ── Render district list in left panel ──
+function hwRenderDistrictList() {
+  const list = document.getElementById('hwDistrictList');
+  list.innerHTML = Object.entries(HW_DATA).map(([district, highways]) => {
+    // Worst status for district
+    const statuses = highways.map(hw => hwStatusData[hw.id]?.status || 'CLEAR');
+    const worst = statuses.includes('BLOCKED') ? 'BLOCKED' : statuses.includes('AT_RISK') ? 'AT_RISK' : 'CLEAR';
+    const color = STATUS_COLOR[worst];
+    const badgeText = worst === 'BLOCKED' ? '🔴 Blocked' : worst === 'AT_RISK' ? '🟡 At Risk' : '🟢 Clear';
+    const badgeBg   = worst === 'BLOCKED' ? 'rgba(255,77,77,0.15)' : worst === 'AT_RISK' ? 'rgba(245,166,35,0.15)' : 'rgba(34,211,165,0.15)';
+    return `
+      <div class="hw-district-item ${activeDistrict===district?'active':''}" onclick="selectDistrict('${district}')">
+        <div class="dist-dot" style="background:${color};"></div>
+        <span class="dist-name">${district}</span>
+        <span class="dist-badge" style="background:${badgeBg};color:${color};">${badgeText}</span>
+      </div>`;
+  }).join('');
+}
+
+// ── Select a district — pan map + show its highways in right panel ──
+function selectDistrict(district) {
+  activeDistrict = district;
+  hwRenderDistrictList();
+
+  const center = DISTRICT_CENTERS[district];
+  if (center) hwMap.flyTo(center, 10, { duration:1.2 });
+
+  // Show highways for this district in right panel
+  const highways = HW_DATA[district] || [];
+  document.getElementById('hwRightTitle').textContent = `${district} — Highways`;
+
+  document.getElementById('hwDetailBody').innerHTML = highways.map((hw, i) => {
+    const s = hwStatusData[hw.id];
+    if (!s) return '';
+    const color    = STATUS_COLOR[s.status];
+    const boxClass = s.status==='BLOCKED'?'red':s.status==='AT_RISK'?'amber':'green';
+    const statusEmoji = s.status==='BLOCKED'?'🔴':s.status==='AT_RISK'?'🟡':'🟢';
+    const srcClass = s.source==='official'?'official':s.source==='ml'?'ml':'';
+    return `
+      <div class="hw-card ${selectedHwId===hw.id?'selected':''}" id="hwcard-${hw.id}"
+           onclick="selectHighway('${hw.id}','${district}')"
+           style="animation-delay:${i*0.06}s">
+        <div class="hw-card-top">
+          <div>
+            <div class="hw-card-name">${hw.name} ${statusEmoji}</div>
+            <div class="hw-card-route">${hw.route} · ${hw.length}</div>
+          </div>
+          <span class="hw-source-tag ${srcClass}">${s.sourceLabel}</span>
+        </div>
+        <div class="hw-warning-box ${boxClass}">
+          ${s.message}
+        </div>
+        <div class="hw-updated-chip">
+          <span class="live-dot" style="width:6px;height:6px;"></span>
+          ${s.issuedAt}
+          ${s.rainfall !== null ? `· Rainfall: <strong style="color:var(--text-main);margin-left:4px;">${s.rainfall} mm</strong>` : ''}
+          ${s.probability !== null ? `· Risk: <strong style="color:${color};margin-left:4px;">${Math.round(s.probability*100)}%</strong>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ── Select individual highway (from map click or card click) ──
+function selectHighway(hwId, district) {
+  selectedHwId = hwId;
+  if (activeDistrict !== district) selectDistrict(district);
+  // Highlight selected card
+  document.querySelectorAll('.hw-card').forEach(c => c.classList.remove('selected'));
+  const card = document.getElementById(`hwcard-${hwId}`);
+  if (card) { card.classList.add('selected'); card.scrollIntoView({behavior:'smooth',block:'nearest'}); }
+  // Highlight polyline
+  Object.entries(hwPolylines).forEach(([id, poly]) => {
+    const s = hwStatusData[id];
+    poly.setStyle({ weight: id===hwId ? 8 : 4, opacity: id===hwId ? 1 : 0.7 });
+  });
+}
+
+// ── Main init function ──
+async function initHighwaysPage(forceRefresh = false) {
+  if (hwInitDone && !forceRefresh) return;
+
+  // Show loader
+  document.getElementById('hwMapLoader').classList.remove('hidden');
+  document.getElementById('hwLoaderText').textContent = 'Initialising map...';
+
+  // Init Leaflet map once
+  if (!hwMap) {
+    hwMap = L.map('highwayMap', {
+      center: [31.8, 77.0], zoom: 8,
+      zoomControl: true,
+    });
+    // Dark CartoDB tiles — free, no key needed
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '© OpenStreetMap contributors © CARTO',
+      subdomains: 'abcd', maxZoom: 19,
+    }).addTo(hwMap);
+  }
+
+  // Step 1: fetch official warnings
+  document.getElementById('hwLoaderText').textContent = 'Checking official warnings...';
+  const officialWarnings = await hwFetchOfficialWarnings();
+
+  // Step 2: for each district, fetch rainfall + run ML
+  document.getElementById('hwLoaderText').textContent = 'Running AI predictions...';
+  const districts = Object.keys(HW_DATA);
+
+  await Promise.all(districts.map(async district => {
+    const cityName = district.split(' ')[0]; // "Manali (Kullu)" → "Manali"
+    const rainfall = await hwFetchRainfall(cityName);
+    const ml       = await hwCallPredict(district, rainfall);
+    const highways = HW_DATA[district];
+    highways.forEach(hw => {
+      hwStatusData[hw.id] = hwDetermineStatus(hw.id, officialWarnings, ml, rainfall);
+    });
+  }));
+
+  // Step 3: draw map + update UI
+  hwDrawAllPolylines();
+  hwRenderDistrictList();
+  hwUpdateStats();
+
+  // Select Shimla by default
+  if (!activeDistrict) selectDistrict('Shimla');
+
+  // Hide loader
+  document.getElementById('hwMapLoader').classList.add('hidden');
+  hwInitDone = true;
+
+  // Invalidate map size after page is visible
+  setTimeout(() => hwMap && hwMap.invalidateSize(), 100);
+}
+
+
+/* ─────────────────────────────────────────
+   PAGE NAVIGATION — extended to handle highways
+───────────────────────────────────────── */
+async function showPage(name, el) {
+  // Hide all pages
+  document.querySelectorAll('.page').forEach(p => {
+    p.classList.remove('active');
+    p.style.display = '';
+  });
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+
+  const page = document.getElementById('page-' + name);
+  page.classList.add('active');
+
+  // Highways needs flex, not contents
+  if (name === 'highways') {
+    page.style.display = 'flex';
+    // Remove padding from content wrapper so map fills properly
+    document.getElementById('content').style.padding = '0 24px 0';
+    document.getElementById('content').style.gap = '0';
+  } else {
+    document.getElementById('content').style.padding = '24px';
+    document.getElementById('content').style.gap = '24px';
+  }
+
+  if (el) el.closest('.nav-item')?.classList.add('active');
+
+  if (name === 'forecast')  renderForecast(activeCity);
+  if (name === 'cities')    renderCities();
+  if (name === 'analytics') await renderAnalytics();
+  if (name === 'highways')  await initHighwaysPage();
+}
+
+
+/* ─────────────────────────────────────────
+   INIT
+───────────────────────────────────────── */
+window.onload = () => {
+  const firstPill = document.querySelector('#cityPills .city-pill');
+  if (firstPill) selectCity(firstPill.textContent.trim(), firstPill);
+  fetchLiveRainfall(document.getElementById('riskDistrict').value);
+};
+</script>
+</body>
+</html>
